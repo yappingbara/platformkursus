@@ -1,0 +1,40 @@
+name: EduPlatform Full-Stack CI Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  lint-and-typecheck:
+    name: Code Quality & Type Check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: eduplatform_test
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - name: Test Database Migration
+        run: |
+          PGPASSWORD=postgrespassword psql -h localhost -U postgres -d eduplatform_test -f database/migrations/001_initial_schema.sql
+          PGPASSWORD=postgrespassword psql -h localhost -U postgres -d eduplatform_test -f database/seeds/seed.sql
