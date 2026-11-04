@@ -1,0 +1,240 @@
+// EduPlatform Prisma Schema
+// Proyek: MOOC Sistem Informasi (Anggota 1)
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. ENUMS
+enum Role {
+  ADMIN
+  PENGAJAR
+  PESERTA
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum CourseStatus {
+  DRAFT
+  UNDER_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// 2. TABEL PENGGUNA (1 Admin, 1 Pengajar, 5 Peserta)
+model User {
+  id           String        @id @default(uuid())
+  name         String
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  role         Role          @default(PESERTA)
+  status       UserStatus    @default(ACTIVE)
+  avatarUrl    String?       @map("avatar_url")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  courses      Course[]      @relation("TeacherCourses")
+  enrollments  Enrollment[]
+  submissions  QuizSubmission[]
+  pushSubs     PushSubscription[]
+
+  @@map("users")
+}
+
+// 3. TABEL KATEGORI KURSUS SI
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  iconName    String?  @default("Folder") @map("icon_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  courses     Course[]
+
+  @@map("categories")
+}
+
+// 4. TABEL 5 KURSUS SISTEM INFORMASI
+model Course {
+  id           String       @id @default(uuid())
+  title        String
+  slug         String       @unique
+  categoryId   String       @map("category_id")
+  teacherId    String       @map("teacher_id")
+  description  String
+  level        CourseLevel  @default(BEGINNER)
+  status       CourseStatus @default(DRAFT)
+  adminNote    String?      @map("admin_note")
+  thumbnailUrl String?      @map("thumbnail_url")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  category     Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  teacher      User         @relation("TeacherCourses", fields: [teacherId], references: [id], onDelete: Restrict)
+  modules      Module[]
+  enrollments  Enrollment[]
+
+  @@index([categoryId])
+  @@index([teacherId])
+  @@index([status])
+  @@map("courses")
+}
+
+// 5. TABEL MODUL & MATERI KURSUS
+model Module {
+  id         String     @id @default(uuid())
+  courseId   String     @map("course_id")
+  title      String
+  orderIndex Int        @map("order_index")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  materials  Material[]
+
+  @@unique([courseId, orderIndex])
+  @@map("modules")
+}
+
+model Material {
+  id              String   @id @default(uuid())
+  moduleId        String   @map("module_id")
+  title           String
+  content         String?
+  fileUrl         String?  @map("file_url")
+  orderIndex      Int      @map("order_index")
+  durationMinutes Int      @default(15) @map("duration_minutes")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  module          Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  quiz            Quiz?
+
+  @@unique([moduleId, orderIndex])
+  @@map("materials")
+}
+
+// 6. TABEL PENDAFTARAN PESERTA (RACE CONDITION SHIELD)
+model Enrollment {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  courseId       String    @map("course_id")
+  enrolledAt     DateTime  @default(now()) @map("enrolled_at")
+  completedAt    DateTime? @map("completed_at")
+  lastAccessedAt DateTime? @default(now()) @map("last_accessed_at")
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+// 7. TABEL KUIS & PENILAIAN DI SERVER
+model Quiz {
+  id           String           @id @default(uuid())
+  materialId   String           @unique @map("material_id")
+  title        String
+  passingScore Int              @default(70) @map("passing_score")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  material     Material         @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  questions    Question[]
+  submissions  QuizSubmission[]
+
+  @@map("quizzes")
+}
+
+model Question {
+  id         String   @id @default(uuid())
+  quizId     String   @map("quiz_id")
+  prompt     String
+  orderIndex Int      @default(0) @map("order_index")
+
+  quiz       Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options    Option[]
+
+  @@map("questions")
+}
+
+model Option {
+  id         String   @id @default(uuid())
+  questionId String   @map("question_id")
+  optionText String   @map("option_text")
+  isCorrect  Boolean  @default(false) @map("is_correct")
+
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("options")
+}
+
+model QuizSubmission {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  quizId      String   @map("quiz_id")
+  score       Decimal  @db.Decimal(5, 2)
+  isPassed    Boolean  @map("is_passed")
+  submittedAt DateTime @default(now()) @map("submitted_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_submissions")
+}
+
+// 8. TABEL WEB PUSH & ANTREAN BULLMQ WORKER
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("push_subscriptions")
+}
+
+model WorkerJob {
+  id             String    @id @default(uuid())
+  idempotencyKey String    @unique @map("idempotency_key")
+  queueName      String    @default("notifications") @map("queue_name")
+  jobType        String    @map("job_type")
+  payload        Json
+  status         JobStatus @default(PENDING)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3) @map("max_attempts")
+  errorMessage   String?   @map("error_message")
+  processedAt    DateTime? @map("processed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([status])
+  @@index([idempotencyKey])
+  @@map("worker_jobs")
+}
