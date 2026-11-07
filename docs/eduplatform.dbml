@@ -1,0 +1,141 @@
+Table categories {
+  id uuid [pk]
+  name varchar(80) [unique]
+  slug varchar(100) [unique]
+  description text
+  icon_name varchar(50)
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table users {
+  id uuid [pk]
+  name varchar(100)
+  email varchar(255) [unique]
+  password_hash varchar(255)
+  role user_role
+  status user_status
+  avatar_url text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table worker_jobs {
+  id uuid [pk]
+  idempotency_key varchar(120) [unique]
+  queue_name varchar(50)
+  job_type varchar(50)
+  payload jsonb
+  status job_status
+  attempts integer
+  max_attempts integer
+  error_message text
+  processed_at timestamptz
+  created_at timestamptz
+}
+
+Table courses {
+  id uuid [pk]
+  title varchar(150)
+  slug varchar(180) [unique]
+  category_id uuid
+  teacher_id uuid
+  description text
+  level course_level
+  status course_status
+  admin_note text
+  thumbnail_url text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table push_subscriptions {
+  id uuid [pk]
+  user_id uuid
+  endpoint text [unique]
+  p256dh text
+  auth text
+  user_agent text
+  created_at timestamptz
+}
+
+Table enrollments {
+  id uuid [pk]
+  user_id uuid
+  course_id uuid
+  enrolled_at timestamptz
+  completed_at timestamptz
+  last_accessed_at timestamptz
+}
+
+Table modules {
+  id uuid [pk]
+  course_id uuid
+  title varchar(120)
+  order_index integer
+  created_at timestamptz
+}
+
+Table materials {
+  id uuid [pk]
+  module_id uuid
+  title varchar(150)
+  content text
+  file_url text
+  order_index integer
+  duration_minutes integer
+  created_at timestamptz
+}
+
+Table material_progress {
+  id uuid [pk]
+  enrollment_id uuid
+  material_id uuid
+  completed_at timestamptz
+}
+
+Table quizzes {
+  id uuid [pk]
+  material_id uuid
+  title varchar(150)
+  passing_score integer
+  created_at timestamptz
+}
+
+Table questions {
+  id uuid [pk]
+  quiz_id uuid
+  prompt text
+  order_index integer
+}
+
+Table quiz_submissions {
+  id uuid [pk]
+  user_id uuid
+  quiz_id uuid
+  score numeric(5,2)
+  is_passed boolean
+  submitted_at timestamptz
+}
+
+Table options {
+  id uuid [pk]
+  question_id uuid
+  option_text text
+  is_correct boolean
+}
+
+Ref: courses.category_id > categories.id
+Ref: courses.teacher_id > users.id
+Ref: push_subscriptions.user_id > users.id
+Ref: enrollments.user_id > users.id
+Ref: enrollments.course_id > courses.id
+Ref: modules.course_id > courses.id
+Ref: materials.module_id > modules.id
+Ref: material_progress.enrollment_id > enrollments.id
+Ref: material_progress.material_id > materials.id
+Ref: quizzes.material_id > materials.id
+Ref: questions.quiz_id > quizzes.id
+Ref: quiz_submissions.user_id > users.id
+Ref: quiz_submissions.quiz_id > quizzes.id
+Ref: options.question_id > questions.id
